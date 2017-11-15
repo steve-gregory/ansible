@@ -547,7 +547,7 @@ class CLI(with_metaclass(ABCMeta, object)):
         return parser
 
     @abstractmethod
-    def parse(self):
+    def parse(self, args=None, values=None):
         """Parse the command line args
 
         This method parses the command line arguments.  It uses the parser
@@ -567,8 +567,9 @@ class CLI(with_metaclass(ABCMeta, object)):
                 # If some additional transformations are needed for the
                 # arguments and options, do it here.
         """
-
-        self.options, self.args = self.parser.parse_args(self.args[1:])
+        if not args:
+            args = self.args[1:]
+        self.options, self.args = self.parser.parse_args(args=args, values=values)
 
         # process tags
         if hasattr(self.options, 'tags') and not self.options.tags:

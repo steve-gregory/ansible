@@ -84,3 +84,71 @@ class AggregateStats:
         else:
             # let overloaded + take care of other types
             self.custom[host][which] += what
+
+
+class DebugStats(AggregateStats):
+    ''' Holds more advanced statistics about per-host activity, to drill down to a specific playbook and task failure/unreachable '''
+
+    def __init__(self, options):
+        self.failed_playbooks = {}
+        self.processed = {}
+        self.failures = {}
+        self.ok = {}
+        self.dark = {}
+        self.changed = {}
+        self.skipped = {}
+
+        # user defined stats, which can be per host or global
+        self.custom = {}
+
+    def _get_playbook_name(self, playbook):
+        key_name = ''
+        with open(playbook, 'r') as the_file:
+            for line in the_file.readlines():
+                if 'name:' in line.strip():
+                    # This is the name you will find in stats.
+                    key_name = line.replace('name:', '').replace('- ', '').strip()
+        if not key_name:
+            raise Exception(
+                "Unnamed playbooks will not allow CustomSubspaceStats to work properly.")
+        return key_name
+
+    def summarize_playbooks(self, host):
+        ''' return information about a particular host '''
+
+        return self.failed_playbooks.get(host, {})
+
+    def increment(self, what, host, play=None, task=None):
+        """
+        In addition to the 'normal' statistics, keep track of 'failed_playbooks' which will have a different interpretation.
+        """
+        super(DebugStats, self).increment(what, host)
+        # Special case for failed playbooks.. record more information!
+        if what in ['ok', 'skipped', 'changed']:
+            return
+        if not play and not task:
+            return
+        play_name = play.get_name()
+        task_path = task.get_path()
+        if task._role:
+            role = task._role._role_name
+            tuple_key = (
+                "Play: %s" % play_name,
+                "Task: %s" % task_path,
+                "Role: %s" % role)
+        else:
+            tuple_key = (
+                "Play: %s" % play_name,
+                "Task: %s" % task_path
+            )
+
+        host_dict = self.failed_playbooks.get(host, {})
+        # Keep track of status counts _per-task_
+        status_dict = host_dict.get(tuple_key, {})
+
+        status_count = status_dict.get(what, 0)
+        status_dict[what] = status_count + 1
+
+        host_dict[tuple_key] = status_dict
+        # Separate results by host.
+        self.failed_playbooks[host] = host_dict

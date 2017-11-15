@@ -26,7 +26,7 @@ import tempfile
 from ansible import constants as C
 from ansible.errors import AnsibleError
 from ansible.executor.play_iterator import PlayIterator
-from ansible.executor.stats import AggregateStats
+from ansible.executor.stats import DebugStats
 from ansible.executor.task_result import TaskResult
 from ansible.module_utils.six import string_types
 from ansible.module_utils._text import to_text
@@ -74,7 +74,7 @@ class TaskQueueManager:
         self._variable_manager = variable_manager
         self._loader = loader
         self._options = options
-        self._stats = AggregateStats()
+        self._stats = DebugStats(options)  # Until a 'stats' module presents itself.. Also 'play_to_path_map' shouldn't have to be passed in.. oh well.
         self.passwords = passwords
         self._stdout_callback = stdout_callback
         self._run_additional_callbacks = run_additional_callbacks
