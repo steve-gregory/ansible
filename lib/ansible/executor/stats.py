@@ -86,12 +86,11 @@ class AggregateStats:
             self.custom[host][which] += what
 
 
-class DictionaryStats(AggregateStats):
+class DebugStats(AggregateStats):
     ''' Holds more advanced statistics about per-host activity, to drill down to a specific playbook and task failure/unreachable '''
 
     def __init__(self, options):
-        self.play_to_path_map = self._get_playbook_map(options)
-        self.processed_playbooks = {}
+        self.failed_playbooks = {}
         self.processed = {}
         self.failures = {}
         self.ok = {}
@@ -114,86 +113,42 @@ class DictionaryStats(AggregateStats):
                 "Unnamed playbooks will not allow CustomSubspaceStats to work properly.")
         return key_name
 
-    def _get_playbook_map(self, options):
-        """
-        """
-        playbook_map = {
-            self._get_playbook_name(playbook): playbook
-            for playbook in options.args}
-        if len(playbook_map) != len(options.args):
-            raise ValueError(
-                "Non-unique names in your playbooks will not allow "
-                "CustomSubspaceStats to work properly. %s" % self.args)
-        return playbook_map
-
     def summarize_playbooks(self, host):
         ''' return information about a particular host '''
 
-        return self.processed_playbooks.get(host, {})
+        return self.failed_playbooks.get(host, {})
 
     def increment(self, what, host, play=None, task=None):
         """
-        In addition to the 'normal' statistics, keep track of 'processed_playbooks' which will have a different interpretation.
+        In addition to the 'normal' statistics, keep track of 'failed_playbooks' which will have a different interpretation.
         """
-        super(DictionaryStats, self).increment(what, host)
+        super(DebugStats, self).increment(what, host)
+        # Special case for failed playbooks.. record more information!
+        if what in ['ok', 'skipped', 'changed']:
+            return
         if not play and not task:
             return
-        self._increment_tuple_dict(what, host, play, task)
+        play_name = play.get_name()
+        task_path = task.get_path()
+        if task._role:
+            role = task._role._role_name
+            tuple_key = (
+                "Play: %s" % play_name,
+                "Task: %s" % task_path,
+                "Role: %s" % role)
+        else:
+            tuple_key = (
+                "Play: %s" % play_name,
+                "Task: %s" % task_path
+            )
 
-    def _increment_tuple_dict(self, what, host, play, task):
-        if what in ['skipped', 'ok', 'changed']:
-            return
-        playbook_key = self._get_playbook_key(play, use_path=True)
-        task_name, role_name = self._get_task_and_role(task)
-
-        host_dict = self.processed_playbooks.get(host, {})
-        playbook_path = self.play_to_path_map.get(play.name, "N/A")
-        tuple_key = (
-            "Path: %s" % playbook_path,
-            "Playbook: %s" % playbook_key,
-            "Role: %s" % role_name,
-            "Task: %s" % task_name)
+        host_dict = self.failed_playbooks.get(host, {})
+        # Keep track of status counts _per-task_
         status_dict = host_dict.get(tuple_key, {})
 
         status_count = status_dict.get(what, 0)
         status_dict[what] = status_count + 1
+
         host_dict[tuple_key] = status_dict
-        self.processed_playbooks[host] = host_dict
-
-    def _get_task_and_role(self, task):
-        if not task:
-            return ("", "")
-        if not getattr(task, 'name', None):
-            task_name = 'Unnamed Task'
-        else:
-            task_name = task.name
-        if not getattr(task, '_role', None):
-            role_name = "Unknown Role"
-        elif not getattr(task._role, '_role_name'):
-            role_name = "Unnamed Role"
-        else:
-            role_name = task._role._role_name
-        return (task_name, role_name)
-
-    def _get_role_key(self, task):
-        if not task:
-            role_key = "Unnamed Task"
-        elif getattr(task, 'name', None):
-            role_key = task.name
-        elif not getattr(task, '_role', None):
-            role_key = "No Role"
-        elif not getattr(task._role, '_role_name', None):
-            role_key = "No Role Name"
-        else:
-            role_key = task._role._role_name
-
-        return role_key
-
-    def _get_playbook_key(self, play, use_path=True):
-        if not play:
-            playbook_key = "No play"
-        elif not getattr(play, 'name', None):
-            playbook_key = "Unnamed Play"
-        else:
-            playbook_key = play.name
-        return playbook_key
+        # Separate results by host.
+        self.failed_playbooks[host] = host_dict
