@@ -77,6 +77,9 @@ class PlaybookCLI(CLI):
         display.verbosity = self.options.verbosity
         self.validate_conflicts(runas_opts=True, vault_opts=True, fork_opts=True)
 
+    def _playbook_execution_complete_hook(self, pbex):
+        return
+
     def run(self):
 
         super(PlaybookCLI, self).run()
@@ -128,6 +131,7 @@ class PlaybookCLI(CLI):
                                 passwords=passwords)
 
         results = pbex.run()
+        self._playbook_execution_complete_hook(pbex)
 
         if isinstance(results, list):
             for p in results:

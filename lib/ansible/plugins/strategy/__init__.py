@@ -136,6 +136,9 @@ class StrategyBase:
         self._final_q.put(_sentinel)
         self._results_thread.join()
 
+    def increment_stat(self, what, host_name, play, task):
+        return self._tqm._stats.increment(what, host_name, play, task)
+
     def run(self, iterator, play_context, result=0):
         # execute one more pass through the iterator without peeking, to
         # make sure that all of the hosts are advanced to their final task.
@@ -393,7 +396,7 @@ class StrategyBase:
                         iterator.mark_host_failed(original_host)
 
                     # increment the failed count for this host
-                    self._tqm._stats.increment('failures', original_host.name)
+                    self.increment_stat('failures', original_host.name, iterator._play, original_task)
 
                     # grab the current state and if we're iterating on the rescue portion
                     # of a block then we save the failed task in a special var for use
@@ -412,17 +415,17 @@ class StrategyBase:
                             ),
                         )
                 else:
-                    self._tqm._stats.increment('ok', original_host.name)
+                    self.increment_stat('ok', original_host.name, iterator._play, original_task)
                     if 'changed' in task_result._result and task_result._result['changed']:
-                        self._tqm._stats.increment('changed', original_host.name)
+                        self.increment_stat('changed', original_host.name, iterator._play, original_task)
                 self._tqm.send_callback('v2_runner_on_failed', task_result, ignore_errors=ignore_errors)
             elif task_result.is_unreachable():
                 self._tqm._unreachable_hosts[original_host.name] = True
                 iterator._play._removed_hosts.append(original_host.name)
-                self._tqm._stats.increment('dark', original_host.name)
+                self.increment_stat('dark', original_host.name, iterator._play, original_task)
                 self._tqm.send_callback('v2_runner_on_unreachable', task_result)
             elif task_result.is_skipped():
-                self._tqm._stats.increment('skipped', original_host.name)
+                self.increment_stat('skipped', original_host.name, iterator._play, original_task)
                 self._tqm.send_callback('v2_runner_on_skipped', task_result)
             else:
                 role_ran = True
@@ -538,9 +541,9 @@ class StrategyBase:
                         self._tqm.send_callback('v2_on_file_diff', task_result)
 
                 if not isinstance(original_task, TaskInclude):
-                    self._tqm._stats.increment('ok', original_host.name)
+                    self.increment_stat('ok', original_host.name, iterator._play, original_task)
                     if 'changed' in task_result._result and task_result._result['changed']:
-                        self._tqm._stats.increment('changed', original_host.name)
+                        self.increment_stat('changed', original_host.name, iterator._play, original_task)
 
                 # finally, send the ok for this task
                 self._tqm.send_callback('v2_runner_on_ok', task_result)
@@ -700,7 +703,7 @@ class StrategyBase:
             # since we skip incrementing the stats when the task result is
             # first processed, we do so now for each host in the list
             for host in included_file._hosts:
-                self._tqm._stats.increment('ok', host.name)
+                self.increment_stat('ok', host.name, iterator._play, included_file._task)
 
         except AnsibleError as e:
             # mark all of the hosts including this file as failed, send callbacks,
@@ -709,7 +712,7 @@ class StrategyBase:
                 tr = TaskResult(host=host, task=included_file._task, return_data=dict(failed=True, reason=to_text(e)))
                 iterator.mark_host_failed(host)
                 self._tqm._failed_hosts[host.name] = True
-                self._tqm._stats.increment('failures', host.name)
+                self.increment_stat('failures', host.name, iterator._play, included_file._task)
                 self._tqm.send_callback('v2_runner_on_failed', tr)
             return []
 
